@@ -82,5 +82,23 @@ __s16 ihexRecord2String(THexRecord record, __s8 **string);
 __s16 ihexString2Record(__s8* string, THexRecord *record);
 /*****************************************************************************/
 
+/**
+ *****************************************************************************
+ * @brief Berechnet die Checksumme des HEX-Record
+ * @param *record Zeiger auf Struktur des Hexrecord
+ * @return 0: Alles o.k.
+ *****************************************************************************/
+__s16 ihexCalcChksum(THexRecord *record);
+/*****************************************************************************/
+
+/**
+ *****************************************************************************
+ * @brief Prüft die Checksumme des HEX-Record
+ * @param record Hexrecord
+ * @return 0	: Prüfsumme stimmt. \n
+ * 		   !=0	: Prüfsumme ist falsch.
+ *****************************************************************************/
+__s16 ihexCheckChksum(THexRecord record);
+/*****************************************************************************/
 
 #endif//__IHEX_H__

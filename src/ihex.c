@@ -128,11 +128,49 @@ __s16 ihexString2Record(__s8* string, THexRecord *record)
  * @param *record Zeiger auf Struktur des Hexrecord
  * @return 0: Alles o.k.
  *****************************************************************************/
-__s16 ihexCalcChkSum(THexRecord *record)
+__s16 ihexCalcChksum(THexRecord *record)
 {
+	__u8 CheckSum = 0;
+	__u8 *BytePtr;
+	__u16 Cntr;
 
+	BytePtr = (__u8*) record;
+
+	BytePtr++;
+	for (Cntr = 0; Cntr < (record->RecLen + 4); Cntr++ )
+	{
+		CheckSum += *BytePtr;
+		BytePtr++;
+	}
+
+	record->ChkSum = -CheckSum;
 	return (0);
 }
+/*****************************************************************************/
+
+/**
+ *****************************************************************************
+ * @brief Prüft die Checksumme des HEX-Record
+ * @param record Hexrecord
+ * @return 0	: Prüfsumme stimmt. \n
+ * 		   !=0	: Prüfsumme ist falsch.
+ *****************************************************************************/
+__s16 ihexCheckChksum(THexRecord record)
+{
+	__u8 TmpCheckSum;
+	TmpCheckSum = record.ChkSum;
+
+	ihexCalcChksum(&record);
+	return (record.ChkSum - TmpCheckSum);
+}
+/*****************************************************************************/
+
+/**
+ *****************************************************************************
+ * @brief
+ * @param
+ * @return
+ *****************************************************************************/
 /*****************************************************************************/
 
 /**
