@@ -51,13 +51,14 @@ typedef struct
  * @brief Wandelt einen Puffer mit Binärdaten in HEX-Records
  * @param inBuf Zeiger auf Puffer mit Binärdaten
  * @param inBufSize Größe des Puffers mit Binärdaten
- * @param outBuf Zeiger auf einen Puffer der die Hex-Records beinhaltet
- * @param outBufSize Größe des Puffers mit den Hex-Records
+ * @param DataLen max. Länge der Daten.
+ * @param **outBuf Zeiger auf einen Puffer der die Hex-Records beinhaltet
+ * @param *outBufSize Größe des Puffers mit den Hex-Records
  * @return 0: Alles o.k. \n
  * 		   -ENOMEM		: konnte kein Speicher für outBuf allokieren.
  *****************************************************************************/
-__s16 ihexBin2Ihex(const __s8* inBuf, __u32 inBufSize,
-					__s8* outBuf, __u32 outBufSize);
+__s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
+					__s8 **outBuf, __u32 *outBufSize);
 /*****************************************************************************/
 
 /**

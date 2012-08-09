@@ -20,30 +20,116 @@
 /**
  *****************************************************************************
  * @brief Wandelt einen Puffer mit Binärdaten in HEX-Records
- * @param inBuf Zeiger auf Puffer mit Binärdaten
+ * @param *inBuf Zeiger auf Puffer mit Binärdaten
  * @param inBufSize Größe des Puffers mit Binärdaten
- * @param outBuf Zeiger auf einen Puffer der die Hex-Records beinhaltet
- * @param outBufSize Größe des Puffers mit den Hex-Records
+ * @param DataLen max. Länge der Daten.
+ * @param **outBuf Zeiger auf einen Puffer der die Hex-Records beinhaltet
+ * @param *outBufSize Größe des Puffers mit den Hex-Records
  * @return 0: Alles o.k. \n
  * 		   -ENOMEM		: konnte kein Speicher für outBuf allokieren.
  *****************************************************************************/
-__s16 ihexBin2Ihex(const __s8* inBuf, __u32 inBufSize,
-					__s8* outBuf, __u32 outBufSize)
+__s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
+					__s8 **outBuf, __u32 *outBufSize)
 {
-	__u32 AnzahlRecords;
+	__u32 Cntr;
+	THexRecord Record;
+	__s8 *RecordString = NULL;
+	__u16 *AdrPtr = NULL;
+	__s8 *tmpBuf = NULL;
 
-	//Berechne wieviele Records erstellt werden müssen
-	AnzahlRecords = (inBufSize / 255) + 1;
-	if ((inBufSize % 255) > 0)
-		AnzahlRecords++;
-
-	//Allokiere Speicher für outBuf
-	outBuf = calloc(AnzahlRecords, (sizeof(THexRecord)));
-	if (outBuf == NULL)
-		return (-ENOMEM);
+	*outBufSize = 0;
 
 	//Erstelle HEX-Records
+	for (Cntr = 0; Cntr < inBufSize; Cntr++)
+	{
+		//Erstelle den Segemt Adress Record
+		if ((Cntr & 0xFFFF) == 0)
+		{
+			Record.RecordMark = ':';
+			Record.RecLen = 0x02;
+			Record.LoadOffset = 0x0000;
+			Record.RecTyp = rtXLA;
+			AdrPtr = (__u16*) &Record.Data[0];
+			*AdrPtr = (__u16) (Cntr / 0x10000);
+			ihexCalcChksum(&Record);
+			RecordString = NULL;
+			ihexRecord2String(Record, &RecordString);
+			if (tmpBuf == NULL)
+			{
+				tmpBuf = calloc(strlen((char*) RecordString), sizeof(__s8));
+				if (tmpBuf == NULL)
+				{
+					free (tmpBuf);
+					free (RecordString);
+					return (-ENOMEM);
+				}
+			}
+			else
+			{
+				tmpBuf = realloc(tmpBuf, strlen((char*) tmpBuf) + strlen((char*) RecordString));
+				if (tmpBuf == NULL)
+				{
+					free (tmpBuf);
+					free (RecordString);
+					return (-ENOMEM);
+				}
+			}
+			strcat((char*) tmpBuf, (char*) RecordString);
+			free(RecordString);
 
+		}
+		//Fülle Header
+		if ((Cntr % DataLen) == 0)
+		{
+			Record.RecordMark = ':';
+			if ((Cntr + DataLen) > inBufSize)
+				Record.RecLen = inBufSize - Cntr;
+			else
+				Record.RecLen = DataLen;
+			Record.LoadOffset = (Cntr / DataLen);
+			Record.RecTyp=rtData;
+		}
+		//Fülle Daten
+		Record.Data[Cntr%DataLen] = inBuf[Cntr];
+
+		//Wenn Datensatz voll, speichern
+		if (((Cntr % DataLen) == (DataLen - 1)) || ((Cntr + 1) == inBufSize))
+		{
+			ihexCalcChksum(&Record);
+			RecordString = NULL;
+			ihexRecord2String(Record, &RecordString);
+			tmpBuf = realloc(tmpBuf, strlen((char*) tmpBuf) + strlen((char*) RecordString));
+			if (tmpBuf == NULL)
+			{
+				free (tmpBuf);
+				free (RecordString);
+				return (-ENOMEM);
+			}
+			strcat((char*) tmpBuf, (char*) RecordString);
+			free(RecordString);
+		}
+	}
+
+	//Enderecord schreiben
+	Record.RecordMark = ':';
+	Record.RecLen = 0x00;
+	Record.LoadOffset = 0x0000;
+	Record.RecTyp = rtEOF;
+	Record.ChkSum = 0xFF;
+	RecordString = NULL;
+	ihexRecord2String(Record, &RecordString);
+	tmpBuf = realloc(tmpBuf, strlen((char*) tmpBuf) + strlen((char*) RecordString));
+	if (tmpBuf == NULL)
+	{
+		free (tmpBuf);
+		free (RecordString);
+		return (-ENOMEM);
+	}
+	strcat((char*) tmpBuf, (char*) RecordString);
+	free(RecordString);
+
+	*outBuf = tmpBuf;
+	*outBufSize = strlen((char*) tmpBuf);
 	return (0);
 }
 /*****************************************************************************/
