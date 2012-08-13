@@ -36,6 +36,7 @@ __s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
 	__s8 *RecordString = NULL;
 	__u16 *AdrPtr = NULL;
 	__s8 *tmpBuf = NULL;
+	__s16 RetVal = 0;
 
 	*outBufSize = 0;
 
@@ -53,31 +54,35 @@ __s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
 			*AdrPtr = (__u16) (Cntr / 0x10000);
 			ihexCalcChksum(&Record);
 			RecordString = NULL;
-			ihexRecord2String(Record, &RecordString);
+			if (ihexRecord2String(Record, &RecordString) != 0)
+			{
+				RetVal = (-ENOMEM);
+				goto exitBin2Ihex;
+			}
 			if (tmpBuf == NULL)
 			{
-				tmpBuf = calloc(strlen((char*) RecordString), sizeof(__s8));
-				if (tmpBuf == NULL)
+
+				if ((tmpBuf = malloc(1 + strlen((char*) RecordString))) == NULL)
 				{
-					free (tmpBuf);
-					free (RecordString);
-					return (-ENOMEM);
+					RetVal = (-ENOMEM);
+					goto exitBin2Ihex;
 				}
+				strcpy((char*) tmpBuf, (char*) RecordString);
 			}
 			else
 			{
-				tmpBuf = realloc(tmpBuf, strlen((char*) tmpBuf) + strlen((char*) RecordString));
-				if (tmpBuf == NULL)
-				{
-					free (tmpBuf);
-					free (RecordString);
-					return (-ENOMEM);
-				}
-			}
-			strcat((char*) tmpBuf, (char*) RecordString);
-			free(RecordString);
 
+				if ((tmpBuf = realloc(tmpBuf,1 + strlen((char*) tmpBuf) + strlen((char*) RecordString))) == NULL)
+				{
+					RetVal = (-ENOMEM);
+					goto exitBin2Ihex;
+				}
+				strcat((char*) tmpBuf, (char*) RecordString);
+			}
+			free(RecordString);
+			RecordString = NULL;
 		}
+
 		//Fülle Header
 		if ((Cntr % DataLen) == 0)
 		{
@@ -86,7 +91,8 @@ __s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
 				Record.RecLen = inBufSize - Cntr;
 			else
 				Record.RecLen = DataLen;
-			Record.LoadOffset = (Cntr / DataLen);
+
+			Record.LoadOffset = Cntr;
 			Record.RecTyp=rtData;
 		}
 		//Fülle Daten
@@ -97,16 +103,22 @@ __s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
 		{
 			ihexCalcChksum(&Record);
 			RecordString = NULL;
-			ihexRecord2String(Record, &RecordString);
-			tmpBuf = realloc(tmpBuf, strlen((char*) tmpBuf) + strlen((char*) RecordString));
-			if (tmpBuf == NULL)
+			if (ihexRecord2String(Record, &RecordString) != 0)
 			{
-				free (tmpBuf);
-				free (RecordString);
-				return (-ENOMEM);
+				RetVal = (-ENOMEM);
+				goto exitBin2Ihex;
 			}
+
+			if ((tmpBuf = realloc(tmpBuf, 1 + strlen((char*) tmpBuf) + strlen((char*) RecordString))) == NULL)
+			{
+				RetVal = (-ENOMEM);
+				goto exitBin2Ihex;
+			}
+
 			strcat((char*) tmpBuf, (char*) RecordString);
+
 			free(RecordString);
+			RecordString = NULL;
 		}
 	}
 
@@ -117,20 +129,31 @@ __s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
 	Record.RecTyp = rtEOF;
 	Record.ChkSum = 0xFF;
 	RecordString = NULL;
-	ihexRecord2String(Record, &RecordString);
-	tmpBuf = realloc(tmpBuf, strlen((char*) tmpBuf) + strlen((char*) RecordString));
-	if (tmpBuf == NULL)
+	if(ihexRecord2String(Record, &RecordString) != 0)
+	{
+		RetVal = (-ENOMEM);
+		goto exitBin2Ihex;
+	}
+
+
+	if ((tmpBuf = realloc(tmpBuf, 1 + strlen((char*) tmpBuf) + strlen((char*) RecordString))) == NULL)
 	{
 		free (tmpBuf);
 		free (RecordString);
 		return (-ENOMEM);
 	}
 	strcat((char*) tmpBuf, (char*) RecordString);
-	free(RecordString);
 
 	*outBuf = tmpBuf;
 	*outBufSize = strlen((char*) tmpBuf);
-	return (0);
+
+exitBin2Ihex:
+	if (RetVal != 0)
+		free (tmpBuf);
+
+	free (RecordString);
+
+	return (RetVal);
 }
 /*****************************************************************************/
 
@@ -142,26 +165,27 @@ __s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
  * @return 	0: Alles o.k.\n
  * 		   -ENOMEM		: konnte kein Speicher für Strings allokieren.
  *****************************************************************************/
-__s16 ihexRecord2String(THexRecord record, __s8 **string)
+__s16 ihexRecord2String(THexRecord record, __s8 **String)
 {
-	__s8 *tmpString;
 	__u8 Cntr;
+	__u8 TmpString[10];
 	//Speicher für String allokieren
-	tmpString = calloc(14 + (record.RecLen<<1), sizeof(__u8));
-	if (tmpString == 0)
+	*String = malloc(15 + (record.RecLen<<1));
+	if (*String == 0)
 		return (-ENOMEM);
-
-	sprintf((char*)tmpString,":%2.2X%4.4X%2.2X",
+	sprintf((char*)*String, ":%2.2X%4.4X%2.2X",
 			 (__u8)record.RecLen, (__u16)record.LoadOffset, (__u8)record.RecTyp);
 	//Daten hinzufügen
 	for(Cntr = 0; Cntr < record.RecLen; Cntr++)
 	{
-		sprintf((char*)(&tmpString[strlen((char*)tmpString)]),"%2.2X",
-				(__u8)record.Data[Cntr]);
+		sprintf((char*)(TmpString),"%2.2X",
+		(__u8)record.Data[Cntr]);
+		strcat((char*)*String,(char*)TmpString);
 	}
+
 	//CRC und Endekennung hinzufügen
-	sprintf((char*)(&tmpString[strlen((char*)tmpString)]),"%2.2X\r\n",(__u8)record.ChkSum);
-	*string = tmpString;
+	sprintf((char*)(TmpString),"%2.2X\r\n",(__u8)record.ChkSum);
+	strcat((char*)*String,(char*)TmpString);
 	return (0);
 }
 /*****************************************************************************/
