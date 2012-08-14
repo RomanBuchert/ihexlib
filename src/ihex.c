@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <arpa/inet.h>
 /*****************************************************************************/
 
 /**
@@ -32,29 +33,31 @@ __s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
 					__s8 **outBuf, __u32 *outBufSize)
 {
 	__u32 Cntr;
-	THexRecord Record;
+	THexRecord Record, AdrRecord;
 	__s8 *RecordString = NULL;
 	__u16 *AdrPtr = NULL;
 	__s8 *tmpBuf = NULL;
 	__s16 RetVal = 0;
-
+	__u16 LoadAdresse;
+	__u16 AddrCntr = 0;
 	*outBufSize = 0;
 
 	//Erstelle HEX-Records
 	for (Cntr = 0; Cntr < inBufSize; Cntr++)
 	{
+		LoadAdresse = Cntr & 0xFFFF;
 		//Erstelle den Segemt Adress Record
-		if ((Cntr & 0xFFFF) == 0)
+		if (((LoadAdresse) == 0))
 		{
-			Record.RecordMark = ':';
-			Record.RecLen = 0x02;
-			Record.LoadOffset = 0x0000;
-			Record.RecTyp = rtXLA;
-			AdrPtr = (__u16*) &Record.Data[0];
-			*AdrPtr = (__u16) (Cntr / 0x10000);
-			ihexCalcChksum(&Record);
+			AdrRecord.RecordMark = ':';
+			AdrRecord.RecLen = 0x02;
+			AdrRecord.LoadOffset = 0x0000;
+			AdrRecord.RecTyp = rtXLA;
+			AdrPtr = (__u16*) &AdrRecord.Data[0];
+			*AdrPtr = (__u16) htons((Cntr >> 16));
+			ihexCalcChksum(&AdrRecord);
 			RecordString = NULL;
-			if (ihexRecord2String(Record, &RecordString) != 0)
+			if (ihexRecord2String(AdrRecord, &RecordString) != 0)
 			{
 				RetVal = (-ENOMEM);
 				goto exitBin2Ihex;
@@ -81,26 +84,31 @@ __s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
 			}
 			free(RecordString);
 			RecordString = NULL;
+			Record.LoadOffset = 0;
 		}
 
-		//Fülle Header
-		if ((Cntr % DataLen) == 0)
-		{
-			Record.RecordMark = ':';
-			if ((Cntr + DataLen) > inBufSize)
-				Record.RecLen = inBufSize - Cntr;
-			else
-				Record.RecLen = DataLen;
-
-			Record.LoadOffset = Cntr;
-			Record.RecTyp=rtData;
-		}
 		//Fülle Daten
-		Record.Data[Cntr%DataLen] = inBuf[Cntr];
+		Record.Data[AddrCntr] = inBuf[Cntr];
+		AddrCntr++;
 
 		//Wenn Datensatz voll, speichern
-		if (((Cntr % DataLen) == (DataLen - 1)) || ((Cntr + 1) == inBufSize))
+		if (((AddrCntr) == (DataLen)) ||
+			/*((Cntr + 1) == inBufSize) ||*/
+			((LoadAdresse) == 0xFFFF))
 		{
+
+			if (LoadAdresse == 0xFFFF)
+			{
+				Record.RecordMark = ';';
+			}
+			Record.RecordMark = ':';
+
+			Record.RecLen = AddrCntr;
+
+			Record.LoadOffset = 1 + LoadAdresse - AddrCntr;
+
+			Record.RecTyp=rtData;
+
 			ihexCalcChksum(&Record);
 			RecordString = NULL;
 			if (ihexRecord2String(Record, &RecordString) != 0)
@@ -119,7 +127,9 @@ __s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
 
 			free(RecordString);
 			RecordString = NULL;
+			AddrCntr = 0;
 		}
+
 	}
 
 	//Enderecord schreiben
@@ -170,7 +180,7 @@ __s16 ihexRecord2String(THexRecord record, __s8 **String)
 	__u8 Cntr;
 	__u8 TmpString[10];
 	//Speicher für String allokieren
-	*String = malloc(15 + (record.RecLen<<1));
+	*String = malloc(20 + (record.RecLen<<1));
 	if (*String == 0)
 		return (-ENOMEM);
 	sprintf((char*)*String, ":%2.2X%4.4X%2.2X",
