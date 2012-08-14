@@ -63,6 +63,20 @@ __s16 ihexBin2Ihex(const __s8 *inBuf, __u32 inBufSize, __u8 DataLen,
 
 /**
  *****************************************************************************
+ * @brief Wandelt einen Hex-String in einen Binärpuffer um
+ * @param *inBuf Zeiger mit Hex-String
+ * @param **outBuf Zeiger auf einen Puffer für die Binärdaten
+ * @param *outBufSize Zeiger auf eine Variable für die Größe der Binärdaten
+ * @return 0: Alles o.k. \n
+ * 		   -ENOMEM		: konnte kein Speicher für outBuf allokieren.
+ *****************************************************************************/
+__s16 ihexIhex2Bin(__sc8 *inBuf,
+					 __s8 **outBuf,
+					 __u32 *outBufSize);
+/*****************************************************************************/
+
+/**
+ *****************************************************************************
  * @brief Erstellt aus einer Hex-Record-Struktur einen Hex-String
  * @param record Datensatz mit dem Hex-Record
  * @param **string Zeiger auf String mit dem Hex-Record

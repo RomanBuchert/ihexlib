@@ -169,6 +169,127 @@ exitBin2Ihex:
 
 /**
  *****************************************************************************
+ * @brief Wandelt einen Hex-String in einen Binärpuffer um.
+ * Es werden nur folgende Datensatztypen erkannt:\n
+ * 00:	DATA	: Datenrecord\n
+ * 01:	EOF		: Dateiende\n
+ * 02:	XSA		: Segmentadresse für folgende Nutzdaten\n
+ * 04:	LSA		: Lineare Startadresse für folgende Nutzdaten.
+ *
+ * @param *inBuf Zeiger mit Hex-String
+ * @param **outBuf Zeiger auf einen Puffer für die Binärdaten
+ * @param *outBufSize Zeiger auf eine Variable für die Größe der Binärdaten
+ * @return 0: Alles o.k. \n
+ * 		   -ENOMEM		: konnte kein Speicher für outBuf allokieren.
+ *****************************************************************************/
+__s16 ihexIhex2Bin(__sc8 *inBuf,
+					 __s8 **outBuf,
+					 __u32 *outBufSize)
+{
+	__u32 BufSize;			//Größe des allokierten Speichers
+	__u32 AdrOffset;		//Adressoffset
+	__u32 LastAddr;
+	__s8 *RecordString = NULL;		//Aktuell bearbeiteter Record;
+	__s8 *RecordToken = NULL;		//Token ohne ":"
+	__s8 *Buffer = NULL;	//interner Buffer um Binärdaten zusammenzusetzen
+	__s16 RetVal = 0;
+	__u16 *AdrPtr;
+	THexRecord Record;
+
+	//Ein Byte allokieren damit später nur mit realloc gearbeitet werden muss
+	if((Buffer = malloc(1)) == NULL)
+	{
+		RetVal = -ENOMEM;
+		goto exitIhex2Bin;
+	}
+	*Buffer = 0xFF;
+	BufSize = 1;
+	RecordToken = (__s8*) (strtok((char*) inBuf,":"));
+	while(RecordToken != NULL)
+	{
+		__u32 Laenge = strlen((char*) RecordToken);
+		RecordString = malloc(Laenge + 5);
+		if (RecordString == NULL)
+		{
+			RetVal = -ENOMEM;
+			goto exitIhex2Bin;
+		}
+		sprintf((char*) RecordString,":%s", (char*) RecordToken);
+		ihexString2Record(RecordString, &Record);
+		free(RecordString);
+		RecordString = NULL;
+		if (ihexCheckChksum(Record) != 0)
+		{
+			RetVal = -EILSEQ;
+		}
+		//Datensatztyp bearbeiten
+		switch(Record.RecTyp)
+		{
+		case rtData:	//Datenrecord bearbeiten
+			LastAddr = AdrOffset + Record.LoadOffset + Record.RecLen;
+			if (BufSize < LastAddr)
+			{
+				Buffer = realloc(Buffer, LastAddr);
+				if (Buffer == NULL)
+				{
+					RetVal = -ENOMEM;
+					goto exitIhex2Bin;
+				}
+				BufSize = LastAddr;
+				memcpy(Buffer + (AdrOffset + Record.LoadOffset),
+					   &Record.Data[0],
+					   Record.RecLen);
+
+			}
+			break;
+
+		case rtEOF:		//EOF
+			break;
+
+		case rtSLA:		//Segmentladeadresse setzen
+			AdrPtr = (__u16*)&Record.Data[0];
+			AdrOffset = ntohs(*AdrPtr);
+			break;
+
+		case rtSSA:		//Start Segment Adress Record
+			break;
+
+		case rtXLA:		//Linear Startadresse setzen
+			AdrPtr = (__u16*)&Record.Data[0];
+			AdrOffset =(__u32) (ntohs(*AdrPtr)) << 16;
+			break;
+
+		case rtXSA:
+			break;
+
+		default:
+			break;
+
+		}
+
+		RecordToken = (__s8*) strtok((char *)NULL, ":");
+	}
+	*outBuf = Buffer;
+	*outBufSize = BufSize;
+
+exitIhex2Bin:
+
+	//Aufräumen im Fehlerfall
+	if (RetVal)
+	{
+		if (Buffer)
+			free(Buffer);
+	}
+
+	//Immer Aufräumen
+	if(RecordString)
+		free(RecordString);
+	return (RetVal);
+}
+/*****************************************************************************/
+
+/**
+ *****************************************************************************
  * @brief Erstellt aus einer Hex-Record-Struktur einen Hex-String
  * @param record Datensatz mit dem Hex-Record
  * @param **string Zeiger auf String mit dem Hex-Record
