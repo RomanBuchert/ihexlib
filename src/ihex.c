@@ -186,9 +186,9 @@ __s16 ihexIhex2Bin(__sc8 *inBuf,
 					 __s8 **outBuf,
 					 __u32 *outBufSize)
 {
-	__u32 BufSize;			//Größe des allokierten Speichers
-	__u32 AdrOffset;		//Adressoffset
-	__u32 LastAddr;
+	__u32 BufSize = 0;			//Größe des allokierten Speichers
+	__u32 AdrOffset = 0;	//Adressoffset
+	__u32 LastAddr = 0;
 	__s8 *RecordString = NULL;		//Aktuell bearbeiteter Record;
 	__s8 *RecordToken = NULL;		//Token ohne ":"
 	__s8 *Buffer = NULL;	//interner Buffer um Binärdaten zusammenzusetzen
@@ -202,7 +202,7 @@ __s16 ihexIhex2Bin(__sc8 *inBuf,
 		RetVal = -ENOMEM;
 		goto exitIhex2Bin;
 	}
-	*Buffer = 0xFF;
+	*Buffer = 0x00;
 	BufSize = 1;
 	RecordToken = (__s8*) (strtok((char*) inBuf,":"));
 	while(RecordToken != NULL)
@@ -221,6 +221,7 @@ __s16 ihexIhex2Bin(__sc8 *inBuf,
 		if (ihexCheckChksum(Record) != 0)
 		{
 			RetVal = -EILSEQ;
+			goto exitIhex2Bin;
 		}
 		//Datensatztyp bearbeiten
 		switch(Record.RecTyp)
@@ -235,36 +236,42 @@ __s16 ihexIhex2Bin(__sc8 *inBuf,
 					RetVal = -ENOMEM;
 					goto exitIhex2Bin;
 				}
+				memset(Buffer + BufSize, 0, LastAddr - BufSize);
 				BufSize = LastAddr;
-				memcpy(Buffer + (AdrOffset + Record.LoadOffset),
-					   &Record.Data[0],
-					   Record.RecLen);
 
 			}
+			memcpy(Buffer + (AdrOffset + Record.LoadOffset), &Record.Data[0], Record.RecLen);
+
 			break;
 
 		case rtEOF:		//EOF
+			goto exitIhex2Bin;
 			break;
 
-		case rtSLA:		//Segmentladeadresse setzen
+		case rtXSA:		//Segmentladeadresse setzen
 			AdrPtr = (__u16*)&Record.Data[0];
-			AdrOffset = ntohs(*AdrPtr);
+			AdrOffset = (__u32) (ntohs(*AdrPtr)) << 4;
 			break;
 
 		case rtSSA:		//Start Segment Adress Record
+			RetVal = -ENOSYS;
+			goto exitIhex2Bin;
 			break;
 
 		case rtXLA:		//Linear Startadresse setzen
 			AdrPtr = (__u16*)&Record.Data[0];
-			AdrOffset =(__u32) (ntohs(*AdrPtr)) << 16;
+			AdrOffset = (__u32) (ntohs(*AdrPtr)) << 16;
 			break;
 
-		case rtXSA:
+		case rtSLA:
+			RetVal = -ENOSYS;
+			goto exitIhex2Bin;
 			break;
 
 		default:
+			RetVal = -ENOSYS;
+			goto exitIhex2Bin;
 			break;
-
 		}
 
 		RecordToken = (__s8*) strtok((char *)NULL, ":");
